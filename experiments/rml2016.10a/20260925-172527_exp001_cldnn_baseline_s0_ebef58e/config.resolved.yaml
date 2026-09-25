@@ -1,0 +1,95 @@
+dataset:
+  name: RML2016.10a
+  filename: RML2016.10a_dict_optimized.pkl
+  root: null
+  root_env: RML2016_ROOT
+  target_peak_accuracy: 0.9
+  split_seed: 42
+  split:
+    val_fraction: 0.1
+    test_fraction: 0.1
+    file: splits/rml2016.10a_seed42.json
+  expected:
+    num_classes: 11
+    snrs:
+    - -20
+    - -18
+    - -16
+    - -14
+    - -12
+    - -10
+    - -8
+    - -6
+    - -4
+    - -2
+    - 0
+    - 2
+    - 4
+    - 6
+    - 8
+    - 10
+    - 12
+    - 14
+    - 16
+    - 18
+    samples_per_group: 1000
+    sample_shape:
+    - 2
+    - 128
+    highest_snr: 18
+    counts:
+      train: 176000
+      val: 22000
+      test: 22000
+evaluation:
+  primary_metric: peak_accuracy_highest_snr
+  selection_split: val
+experiment:
+  name: exp001_cldnn_baseline
+  seed: 0
+  deterministic: true
+model:
+  name: cldnn_v1
+  params:
+    conv_channels:
+    - 64
+    - 64
+    - 128
+    kernel_sizes:
+    - 7
+    - 5
+    - 3
+    pool: 2
+    lstm_hidden: 128
+    lstm_layers: 2
+    lstm_dropout: 0.3
+    attention_hidden: 128
+    dropout: 0.5
+data:
+  normalize: per_sample_power
+  features: iq_amp_phase
+  train_snrs: all
+train:
+  epochs: 100
+  batch_size: 256
+  eval_batch_size: 1024
+  optimizer:
+    name: adamw
+    lr: 0.001
+    weight_decay: 0.0001
+  scheduler:
+    name: cosine
+    warmup_epochs: 3
+    min_lr_ratio: 0.01
+  amp: true
+  grad_clip: 1.0
+  label_smoothing: 0.0
+  augmentation: none
+selection:
+  metric: val_peak_accuracy_highest_snr
+  tie_breaker: val_accuracy_high_snr
+  high_snr_min: 10
+  early_stopping_patience: 20
+output:
+  root: experiments
+  registry: results/registry.csv

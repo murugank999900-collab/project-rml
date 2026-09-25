@@ -1,0 +1,19 @@
+{
+  "run_id": "20260925-172527_exp001_cldnn_baseline_s0_ebef58e",
+  "best_epoch": 23,
+  "epochs_run": 43,
+  "stopped_early": true,
+  "selection_metric": "val_peak_accuracy_highest_snr",
+  "val_highest_snr": 18,
+  "val_peak_accuracy_highest_snr": 0.9272727272727272,
+  "val_peak_accuracy_highest_snr_ci95": [
+    0.9103941998316813,
+    0.9411773663900262
+  ],
+  "val_overall_accuracy": 0.6228181818181818,
+  "checkpoint_sha256": {
+    "best.pt": "681e96ff4bf52cd6692ba1cdd2d001ebe6b76aa4e7596d780e4c75770df74365",
+    "last.pt": "a2c68a996c2932ce22b770d5253b03a3e78da356d6130b42ad21d726db2e1760"
+  },
+  "test_evaluated": false
+}
