@@ -34,6 +34,26 @@ def features_iq_amp_phase(X: np.ndarray) -> np.ndarray:
     return np.stack([i, q, amp, phase], axis=1).astype(np.float32)
 
 
+def instantaneous_frequency(X: np.ndarray) -> np.ndarray:
+    """(N, 2, T) IQ -> (N, T) wrap-safe instantaneous frequency in [-1, 1].
+
+    inst_freq[t] = angle(z[t] * conj(z[t-1])) / pi with z = I + jQ, and
+    inst_freq[0] = 0. Taking the angle of the product (not differencing the
+    wrapped phase) keeps the result continuous across the +/-pi boundary.
+    """
+    i, q = X[:, 0, :].astype(np.float64), X[:, 1, :].astype(np.float64)
+    re = i[:, 1:] * i[:, :-1] + q[:, 1:] * q[:, :-1]  # Re(z[t] * conj(z[t-1]))
+    im = q[:, 1:] * i[:, :-1] - i[:, 1:] * q[:, :-1]  # Im(z[t] * conj(z[t-1]))
+    out = np.zeros(i.shape, dtype=np.float32)
+    out[:, 1:] = np.arctan2(im, re) / np.pi
+    return out
+
+
+def features_iq_amp_phase_if(X: np.ndarray) -> np.ndarray:
+    """(N, 2, T) IQ -> (N, 5, T): I, Q, amplitude, phase / pi, instantaneous frequency."""
+    return np.concatenate([features_iq_amp_phase(X), instantaneous_frequency(X)[:, None, :]], axis=1)
+
+
 NORMALIZERS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
     "none": normalize_none,
     "per_sample_power": normalize_per_sample_power,
@@ -42,6 +62,7 @@ NORMALIZERS: dict[str, Callable[[np.ndarray], np.ndarray]] = {
 FEATURES: dict[str, tuple[Callable[[np.ndarray], np.ndarray], int]] = {
     "iq": (features_iq, 2),
     "iq_amp_phase": (features_iq_amp_phase, 4),
+    "iq_amp_phase_if": (features_iq_amp_phase_if, 5),
 }
 
 

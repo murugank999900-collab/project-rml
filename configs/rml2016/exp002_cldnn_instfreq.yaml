@@ -1,0 +1,46 @@
+# exp002: exp001 + one change: 5th input channel = wrap-safe instantaneous frequency.
+# Hypothesis (validation evidence from exp001): WBFM -> AM-DSB is 59 of 80 val errors at +18 dB.
+base: configs/rml2016/base.yaml
+
+experiment:
+  name: exp002_cldnn_instfreq
+  seed: 0                # training seed; the split seed is dataset.split_seed (42)
+  deterministic: true
+
+model:
+  name: cldnn_v1
+  params:
+    conv_channels: [64, 64, 128]
+    kernel_sizes: [7, 5, 3]
+    pool: 2
+    lstm_hidden: 128
+    lstm_layers: 2
+    lstm_dropout: 0.3
+    attention_hidden: 128
+    dropout: 0.5
+
+data:
+  normalize: per_sample_power   # stateless, per sample: no information shared across splits
+  features: iq_amp_phase_if     # I, Q, amplitude, phase/pi, instantaneous frequency -> 5 channels
+  train_snrs: all               # complete official training split (176000 samples)
+
+train:
+  epochs: 100
+  batch_size: 256
+  eval_batch_size: 1024
+  optimizer: {name: adamw, lr: 1.0e-3, weight_decay: 1.0e-4}
+  scheduler: {name: cosine, warmup_epochs: 3, min_lr_ratio: 0.01}
+  amp: true
+  grad_clip: 1.0
+  label_smoothing: 0.0
+  augmentation: none
+
+selection:
+  metric: val_peak_accuracy_highest_snr   # primary; validation split only
+  tie_breaker: val_accuracy_high_snr      # val accuracy at SNR >= high_snr_min
+  high_snr_min: 10
+  early_stopping_patience: 20
+
+output:
+  root: experiments
+  registry: results/registry.csv

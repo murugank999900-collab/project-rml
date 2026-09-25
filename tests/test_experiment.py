@@ -125,3 +125,22 @@ def test_official_split_file_matches_code():
     assert split.counts() == {"train": 176000, "val": 22000, "test": 22000}
     assert make_split(split.group_sizes, 42, 0.1, 0.1).same_indices(split)
     assert max(g.snr for g in split.groups) == 18
+
+
+def _flatten(d, prefix=""):
+    out = {}
+    for k, v in d.items():
+        key = f"{prefix}{k}"
+        out.update(_flatten(v, key + ".") if isinstance(v, dict) else {key: v})
+    return out
+
+
+def test_exp002_differs_from_exp001_only_in_name_and_features():
+    exp001 = _flatten(load_experiment_config(EXP001))
+    exp002 = _flatten(load_experiment_config(PROJECT_ROOT / "configs" / "rml2016" / "exp002_cldnn_instfreq.yaml"))
+    assert exp001.keys() == exp002.keys()
+    changed = {k: (exp001[k], exp002[k]) for k in exp001 if exp001[k] != exp002[k]}
+    assert changed == {
+        "experiment.name": ("exp001_cldnn_baseline", "exp002_cldnn_instfreq"),
+        "data.features": ("iq_amp_phase", "iq_amp_phase_if"),
+    }
