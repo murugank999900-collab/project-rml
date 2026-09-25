@@ -1,0 +1,28 @@
+# RML2016.10a base configuration.
+# The dataset path is runtime-specific and is NOT stored here. Provide it via
+# the environment variable named in `root_env`, or `--data` on the command line.
+
+dataset:
+  name: RML2016.10a
+  filename: RML2016.10a_dict_optimized.pkl
+  root: null
+  root_env: RML2016_ROOT
+  target_peak_accuracy: 0.90
+  split_seed: 42
+  split:
+    val_fraction: 0.1
+    test_fraction: 0.1
+    file: splits/rml2016.10a_seed42.json
+  expected:
+    num_classes: 11
+    snrs: [-20, -18, -16, -14, -12, -10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10, 12, 14, 16, 18]
+    samples_per_group: 1000
+    sample_shape: [2, 128]
+    highest_snr: 18
+    counts: {train: 176000, val: 22000, test: 22000}
+
+evaluation:
+  # Primary metric: held-out accuracy at the highest SNR present in the data.
+  primary_metric: peak_accuracy_highest_snr
+  # Model selection uses the validation split only.
+  selection_split: val

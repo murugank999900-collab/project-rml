@@ -1,0 +1,20 @@
+[project]
+name = "project-rml"
+version = "0.1.0"
+description = "Automatic modulation classification on RML2016.10a and RML2018.01a"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "pyyaml>=6.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
