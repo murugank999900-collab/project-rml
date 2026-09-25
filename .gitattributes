@@ -1,0 +1,13 @@
+# Store and check out text files with LF on every platform, so JSON/YAML/CSV
+# files are byte-identical on Windows, Linux (Kaggle/Colab) and GitHub.
+* text=auto eol=lf
+
+*.pkl binary
+*.pt binary
+*.pth binary
+*.h5 binary
+*.hdf5 binary
+*.npy binary
+*.npz binary
+*.png binary
+*.jpg binary

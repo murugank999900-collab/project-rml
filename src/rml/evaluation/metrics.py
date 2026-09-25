@@ -92,6 +92,26 @@ def confusion_matrix(y_true, y_pred, num_classes: int) -> np.ndarray:
     return cm
 
 
+def accuracy_at_or_above(y_true, y_pred, snr, min_snr: int) -> float:
+    """Accuracy over samples with SNR >= ``min_snr``."""
+    y_true, y_pred, snr = _check_inputs(y_true, y_pred, snr)
+    mask = snr >= min_snr
+    if not mask.any():
+        raise ValueError(f"No samples with SNR >= {min_snr} dB")
+    return float(np.mean(y_true[mask] == y_pred[mask]))
+
+
+def wilson_interval(correct: int, n: int, z: float = 1.959964) -> tuple[float, float]:
+    """Wilson score interval for a binomial proportion (default 95%)."""
+    if n <= 0:
+        raise ValueError("n must be positive")
+    p = correct / n
+    denom = 1 + z**2 / n
+    centre = (p + z**2 / (2 * n)) / denom
+    half = z * np.sqrt(p * (1 - p) / n + z**2 / (4 * n**2)) / denom
+    return float(max(0.0, centre - half)), float(min(1.0, centre + half))
+
+
 def classification_report(cm: np.ndarray, class_names: Sequence[str]) -> dict:
     """Per-class precision/recall/F1/support plus macro and weighted averages."""
     cm = np.asarray(cm)
@@ -105,7 +125,7 @@ def classification_report(cm: np.ndarray, class_names: Sequence[str]) -> dict:
         recall = np.where(support > 0, tp / support, 0.0)
         f1 = np.where(precision + recall > 0, 2 * precision * recall / (precision + recall), 0.0)
 
-    report = {
+    report: dict = {
         name: {
             "precision": float(precision[i]),
             "recall": float(recall[i]),
@@ -177,6 +197,9 @@ def evaluate_predictions(
         "highest_snr": top_snr,
         "n_samples_highest_snr": int(top_mask.sum()),
         "peak_accuracy_highest_snr": peak,
+        "peak_accuracy_highest_snr_ci95": list(
+            wilson_interval(int(np.sum(y_true[top_mask] == y_pred[top_mask])), int(top_mask.sum()))
+        ),
         "classification_report": classification_report(cm, class_names),
         "classification_report_highest_snr": classification_report(cm_top, class_names),
         "confusion_matrix": cm.tolist(),

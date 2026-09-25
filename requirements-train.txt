@@ -1,0 +1,4 @@
+# Training dependencies. Kaggle/Colab GPU images already ship a CUDA build of
+# PyTorch that satisfies this; pip will leave it in place.
+-r requirements.txt
+torch>=2.4

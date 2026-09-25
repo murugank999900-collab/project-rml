@@ -54,3 +54,59 @@ def resolve_dataset_file(
     if not p.is_file():
         raise FileNotFoundError(f"Dataset file not found: {p} (from {source})")
     return p
+
+
+# --- Experiment configs -------------------------------------------------------
+
+REQUIRED_SECTIONS = ("dataset", "experiment", "model", "data", "train", "selection", "output")
+
+
+def deep_merge(base: Mapping, override: Mapping) -> dict:
+    """Recursively merge ``override`` into a copy of ``base``."""
+    out = dict(base)
+    for k, v in override.items():
+        out[k] = deep_merge(out[k], v) if isinstance(v, Mapping) and isinstance(out.get(k), Mapping) else v
+    return out
+
+
+def apply_override(cfg: dict, assignment: str) -> None:
+    """Apply a ``dotted.key=value`` override in place; ``value`` is parsed as YAML."""
+    key, sep, raw = assignment.partition("=")
+    if not sep or not key:
+        raise ValueError(f"Override must look like key.path=value, got {assignment!r}")
+    *parents, leaf = key.strip().split(".")
+    node = cfg
+    for p in parents:
+        if not isinstance(node.get(p), dict):
+            raise KeyError(f"Override {assignment!r}: '{p}' is not a config section")
+        node = node[p]
+    if leaf not in node:
+        raise KeyError(f"Override {assignment!r}: unknown key '{leaf}'")
+    node[leaf] = yaml.safe_load(raw)
+
+
+def load_experiment_config(path: str | Path, overrides: tuple[str, ...] | list[str] = ()) -> dict:
+    """Load an experiment config, merged over the file named by its ``base`` key."""
+    with open(path, encoding="utf-8") as f:
+        raw = yaml.safe_load(f) or {}
+    base_path = raw.pop("base", None)
+    cfg = deep_merge(load_config(resolve_project_path(base_path)), raw) if base_path else raw
+    for o in overrides:
+        apply_override(cfg, o)
+    validate_experiment_config(cfg)
+    return cfg
+
+
+def validate_experiment_config(cfg: Mapping) -> None:
+    missing = [s for s in REQUIRED_SECTIONS if s not in cfg]
+    if missing:
+        raise ValueError(f"Experiment config missing sections: {missing}")
+    sel = cfg["selection"]
+    for key in ("metric", "tie_breaker"):
+        name = sel.get(key)
+        if name is not None and not str(name).startswith("val_"):
+            raise ValueError(f"selection.{key} must be a validation metric (val_*), got {name!r}")
+    if cfg["data"].get("train_snrs", "all") != "all":
+        raise ValueError("data.train_snrs must be 'all': training uses the complete official training split")
+    if not isinstance(cfg["experiment"].get("seed"), int):
+        raise ValueError("experiment.seed must be an integer")
