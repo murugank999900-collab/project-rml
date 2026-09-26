@@ -13,8 +13,9 @@ the rows requested through :meth:`RML2018Dataset.take`, transposed to
 (n, 2, 1024) so the shared transforms and models apply unchanged.
 
 The class label is the one-hot column index. The HDF5 file stores no class
-names; :data:`CLASSES` follows DeepSig's published ``classes.txt`` order, which
-is widely reported not to match the columns, so names are for display only.
+names; :data:`CLASSES` follows the corrected ``classes-fixed.json`` shipped with
+the Kaggle copy of the dataset (DeepSig's original ``classes.txt`` order does
+not match the columns). Names are for display only.
 
 ``h5py`` is imported lazily (optional extra ``rml2018``), so the split reader
 works without it.
@@ -25,14 +26,16 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 import numpy as np
 
 from rml.data.splits import GroupKey, _hash_indices
+from rml.data.views import Subset, TrainVal, check_split_matches_dataset
 from rml.experiment.metadata import sha256_file
 
-# Display names in DeepSig classes.txt order (unverified against the one-hot columns).
+# Display names by one-hot column, as in the dataset's corrected ``classes-fixed.json``
+# (DeepSig's original ``classes.txt`` order does not match the columns).
 CLASSES = (
     "OOK", "4ASK", "8ASK", "BPSK", "QPSK", "8PSK", "16PSK", "32PSK",
     "16APSK", "32APSK", "64APSK", "128APSK", "16QAM", "32QAM", "64QAM", "128QAM",
@@ -92,30 +95,78 @@ class RML2018Dataset:
 
     def take(self, idx) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Return (X, y, snr) for the given row indices; X is (n, 2, 1024) float32."""
+        idx = self._check_indices(idx)
+        return self.read_rows({"x": idx})[0]["x"], self.y[idx], self.snr[idx]
+
+    def _check_indices(self, idx) -> np.ndarray:
         idx = np.asarray(idx, dtype=np.int64)
         if idx.ndim != 1:
             raise ValueError("Indices must be one-dimensional")
         if idx.size and (idx.min() < 0 or idx.max() >= len(self)):
             raise IndexError("Row index out of range")
-        return self._read_x(idx), self.y[idx], self.snr[idx]
+        return idx
 
-    def _read_x(self, idx: np.ndarray) -> np.ndarray:
+    def read_rows(
+        self,
+        parts: Mapping[str, np.ndarray],
+        dtype=np.float32,
+        chunk_rows: int | None = None,
+        log: Callable[[str], None] | None = None,
+    ) -> tuple[dict[str, np.ndarray], dict]:
+        """Read X for several index sets in one sequential pass over the file.
+
+        Returns ``{name: (n, 2, 1024) array}`` in the order of each index set,
+        plus conversion stats. X is read in row chunks (only the span of rows
+        that is needed from each chunk), so memory holds one chunk of float32
+        rows plus the outputs, never the full dataset. For ``float16`` outputs
+        the stats report overflow/non-finite values and the relative RMS
+        rounding error, so callers can reject a lossy conversion.
+        """
         import h5py
 
-        out = np.empty((idx.size, *SAMPLE_SHAPE), dtype=np.float32)
-        order = np.argsort(idx, kind="stable")
-        sorted_idx = idx[order]
-        blocks = sorted_idx // _CHUNK_ROWS
-        bounds = np.flatnonzero(np.diff(blocks)) + 1
+        chunk_rows = chunk_rows or _CHUNK_ROWS
+        plan = {}
+        for name, idx in parts.items():
+            idx = self._check_indices(idx)
+            order = np.argsort(idx, kind="stable")
+            plan[name] = (idx[order], order, np.empty((idx.size, *SAMPLE_SHAPE), dtype=dtype))
+        needed = np.unique(np.concatenate([s // chunk_rows for s, _, _ in plan.values()] or [np.empty(0, np.int64)]))
+        sq_sum = err_sq_sum = 0.0
+        max_abs = 0.0
         with h5py.File(self.path, "r") as f:
             X = f["X"]
-            for lo, hi in zip(np.r_[0, bounds], np.r_[bounds, idx.size]):
-                if lo == hi:
-                    continue
-                start = int(blocks[lo]) * _CHUNK_ROWS
-                rows = X[start : min(start + _CHUNK_ROWS, len(self))]
-                out[order[lo:hi]] = rows[sorted_idx[lo:hi] - start].transpose(0, 2, 1)
-        return out
+            for i, c in enumerate(needed):
+                start, stop = int(c) * chunk_rows, min((int(c) + 1) * chunk_rows, len(self))
+                active = {}
+                for name, (s, _, _) in plan.items():
+                    lo, hi = np.searchsorted(s, [start, stop])
+                    if hi > lo:
+                        active[name] = (lo, hi)
+                first = min(int(plan[n][0][lo]) for n, (lo, _) in active.items())
+                last = max(int(plan[n][0][hi - 1]) for n, (_, hi) in active.items())
+                rows = X[first : last + 1]
+                for name, (lo, hi) in active.items():
+                    s, order, out = plan[name]
+                    src = rows[s[lo:hi] - first].transpose(0, 2, 1).astype(np.float32, copy=False)
+                    dst = src.astype(dtype)
+                    if dst.dtype != src.dtype:
+                        err = dst.astype(np.float32) - src
+                        sq_sum += float(np.sum(src * src, dtype=np.float64))
+                        err_sq_sum += float(np.sum(err * err, dtype=np.float64))
+                        max_abs = max(max_abs, float(np.max(np.abs(src))))
+                    out[order[lo:hi]] = dst
+                if log and (i + 1) % 8 == 0:
+                    log(f"  read {i + 1}/{needed.size} chunks")
+        outputs = {name: out for name, (_, _, out) in plan.items()}
+        stats = {"dtype": np.dtype(dtype).name, "chunks_read": int(needed.size)}
+        if sq_sum:
+            finite = all(bool(np.all(np.isfinite(o))) for o in outputs.values())
+            stats.update(
+                source_max_abs=max_abs,
+                all_finite=finite,
+                relative_rms_rounding_error=float(np.sqrt(err_sq_sum / sq_sum)),
+            )
+        return outputs, stats
 
 
 def load_rml2018(path: str | Path, classes: Sequence[str] = CLASSES, chunk_rows: int = _CHUNK_ROWS) -> RML2018Dataset:
@@ -258,12 +309,48 @@ def check_split_against_labels(
     y: np.ndarray,
     snr: np.ndarray,
     per_group: Mapping[str, int],
+    parts: Sequence[str] = PARTS,
 ) -> None:
-    """Raise unless every split part has ``per_group[part]`` samples of every (class, SNR)."""
+    """Raise unless each of ``parts`` has ``per_group[part]`` samples of every (class, SNR).
+
+    Training passes ``parts=("train", "val")`` so it never reads the test indices.
+    """
     snr_values, snr_idx = np.unique(snr, return_inverse=True)
     n_classes = int(y.max()) + 1
-    for part in PARTS:
+    for part in parts:
         idx = getattr(split, part)
         counts = np.bincount(y[idx] * len(snr_values) + snr_idx[idx], minlength=n_classes * len(snr_values))
         if np.any(counts != per_group[part]):
             raise ValueError(f"{part}: not {per_group[part]} samples in every (class, SNR) group")
+
+
+# --- Split views (compact in-memory copies, one sequential read) ---------------
+
+
+def make_train_val_compact(
+    ds: RML2018Dataset, split: RML2018Split, dtype=np.float16, log: Callable[[str], None] | None = None
+) -> tuple[TrainVal, dict]:
+    """Train and validation subsets read in one pass. Does not read the split's test indices.
+
+    With ``float16`` the train+val samples take ~9.4 GB instead of ~18.8 GB
+    (float32); the returned stats give the rounding error so callers can check it.
+    """
+    check_split_matches_dataset(ds, split)
+    train_idx, val_idx = split.train, split.val
+    arrays, stats = ds.read_rows({"train": train_idx, "val": val_idx}, dtype=dtype, log=log)
+    tv = TrainVal(
+        Subset("train", arrays["train"], ds.y[train_idx], ds.snr[train_idx]),
+        Subset("val", arrays["val"], ds.y[val_idx], ds.snr[val_idx]),
+        ds.classes,
+    )
+    return tv, stats
+
+
+def make_test_compact(
+    ds: RML2018Dataset, split: RML2018Split, dtype=np.float16, log: Callable[[str], None] | None = None
+) -> tuple[Subset, dict]:
+    """Held-out test subset. For final evaluation only."""
+    check_split_matches_dataset(ds, split)
+    idx = split.test
+    arrays, stats = ds.read_rows({"test": idx}, dtype=dtype, log=log)
+    return Subset("test", arrays["test"], ds.y[idx], ds.snr[idx]), stats

@@ -1,0 +1,51 @@
+# exp001: first RML2018.01a experiment -- reproducible baseline with the reference architecture.
+# Hypothesis: cldnn_v1 (best RML2016 design: 92.7% val / 92.9% test at +18 dB) transfers to
+# RML2018 once the 8x longer input is pooled back to a 128-step LSTM sequence, and sets the
+# reference point that later single-change experiments must beat on val peak accuracy at +30 dB.
+# Changes vs RML2016 exp001, each forced by the dataset: pool 2 -> 8 (T = 1024), batch 256 -> 512
+# and epochs 100 -> 30 (2.04M training samples per epoch), patience 20 -> 6.
+base: configs/rml2018/base.yaml
+
+experiment:
+  name: exp001_cldnn_baseline
+  seed: 0                # training seed; the split seed is dataset.split_seed (42)
+  deterministic: true
+
+model:
+  name: cldnn_v1
+  params:
+    conv_channels: [64, 64, 128]
+    kernel_sizes: [7, 5, 3]
+    pool: 8              # 1024 -> 128 LSTM steps
+    lstm_hidden: 128
+    lstm_layers: 2
+    lstm_dropout: 0.3
+    attention_hidden: 128
+    dropout: 0.5
+
+data:
+  normalize: per_sample_power   # stateless, per sample: no information shared across splits
+  features: iq_amp_phase        # I, Q, amplitude, phase/pi -> 4 channels (computed on the GPU per batch)
+  train_snrs: all               # complete official training split (2,044,224 samples)
+  storage_dtype: float16        # host-memory train+val arrays (~9.4 GB); rounding error is checked at load
+
+train:
+  epochs: 30
+  batch_size: 512
+  eval_batch_size: 2048
+  optimizer: {name: adamw, lr: 1.0e-3, weight_decay: 1.0e-4}
+  scheduler: {name: cosine, warmup_epochs: 1, min_lr_ratio: 0.01}
+  amp: true
+  grad_clip: 1.0
+  label_smoothing: 0.0
+  augmentation: none
+
+selection:
+  metric: val_peak_accuracy_highest_snr   # primary; validation split only (+30 dB, n = 9,840)
+  tie_breaker: val_accuracy_high_snr      # val accuracy at SNR >= high_snr_min
+  high_snr_min: 10
+  early_stopping_patience: 6
+
+output:
+  root: experiments
+  registry: results/registry.csv

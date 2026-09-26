@@ -26,7 +26,8 @@ No target has been achieved yet.
 ```
 configs/rml2016/base.yaml          dataset + split + evaluation config (no runtime paths)
 configs/rml2016/exp001_cldnn.yaml  first experiment (cldnn_v1)
-configs/rml2018/base.yaml          RML2018.01a dataset + frozen split hashes (not yet wired into training)
+configs/rml2018/base.yaml          RML2018.01a dataset + frozen split hashes
+configs/rml2018/exp001_cldnn.yaml  first RML2018.01a experiment (cldnn_v1 baseline)
 src/rml/config.py                  config loading/merging/overrides, dataset path resolution
 src/rml/data/                      loader, frozen split, train/val vs test views, input transforms
 src/rml/evaluation/                overall / per-SNR / peak accuracy, CI, confusion matrix, report
@@ -37,6 +38,9 @@ scripts/prepare_rml2016.py         verify dataset structure, create or verify th
 scripts/prepare_rml2018.py         verify RML2018.01a and its frozen split (never writes a split)
 scripts/train.py                   train one experiment (train + val only)
 scripts/evaluate_final.py          one-time held-out test evaluation of a finished run
+scripts/train_rml2018.py           RML2018.01a training (batched, resumable; train + val only)
+scripts/evaluate_final_rml2018.py  one-time held-out test evaluation of a finished RML2018.01a run
+kaggle/                            Kaggle kernels: dataset verification, GPU training runner
 splits/                            frozen split index files (no samples)
 experiments/<dataset>/<run_id>/    one directory per run (checkpoints are git-ignored)
 results/registry.csv               append-only log of train / final_test events
@@ -73,6 +77,27 @@ After all choices for a run are final:
 ```bash
 python scripts/evaluate_final.py --run experiments/rml2016.10a/<run_id> --final
 ```
+
+### RML2018.01a
+
+RML2018.01a X is ~21 GB, so it is not trained through `scripts/train.py`. `scripts/train_rml2018.py`
+reads the train and validation rows from the HDF5 file in one sequential pass into float16
+host-memory arrays (~9.4 GB; the rounding error is measured and checked), then transforms each
+batch on the GPU. Test rows are never read. Checkpoints are written every epoch; an interrupted
+run continues with `--resume <run_dir>` (same commit required).
+
+```bash
+pip install -e .[rml2018]
+python scripts/train_rml2018.py --config configs/rml2018/exp001_cldnn.yaml --data /path/to/GOLD_XYZ_OSC.0001_1024.hdf5 --smoke
+python scripts/train_rml2018.py --config configs/rml2018/exp001_cldnn.yaml --data /path/to/GOLD_XYZ_OSC.0001_1024.hdf5
+python scripts/train_rml2018.py --resume experiments/rml2018.01a/<run_id> --data ...
+python scripts/evaluate_final_rml2018.py --run experiments/rml2018.01a/<run_id> --final --data ...
+```
+
+`--smoke` runs 200 batches under `experiments/_smoke/` (no registry row) to measure throughput.
+Besides the RML2016 outputs, each run writes `val_epochs.jsonl` (full validation metrics per
+epoch) and `val_metrics_best.json`. On Kaggle, `kaggle/train_rml2018.py` runs the same commands
+from a pinned commit.
 
 ## Adding an architecture
 
