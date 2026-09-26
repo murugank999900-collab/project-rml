@@ -15,7 +15,9 @@ Overall accuracy is reported but is secondary and is not used for experiment sel
 | Dataset      | Highest SNR | Target peak accuracy |
 |--------------|-------------|----------------------|
 | RML2016.10a  | +18 dB      | >= 90%               |
-| RML2018.01a  | +30 dB      | >= 94%               |
+| RML2018.01a  | +30 dB      | >= 96%               |
+
+For RML2018.01a, the MR-Transformer paper's ~94% high-SNR result is a reference baseline, not the target.
 
 No target has been achieved yet.
 
@@ -24,6 +26,7 @@ No target has been achieved yet.
 ```
 configs/rml2016/base.yaml          dataset + split + evaluation config (no runtime paths)
 configs/rml2016/exp001_cldnn.yaml  first experiment (cldnn_v1)
+configs/rml2018/base.yaml          RML2018.01a dataset + frozen split hashes (not yet wired into training)
 src/rml/config.py                  config loading/merging/overrides, dataset path resolution
 src/rml/data/                      loader, frozen split, train/val vs test views, input transforms
 src/rml/evaluation/                overall / per-SNR / peak accuracy, CI, confusion matrix, report
@@ -31,6 +34,7 @@ src/rml/models/                    model registry + architectures (cldnn_v1)
 src/rml/training/                  trainer, inference, validation-only selection, seeding
 src/rml/experiment/                run directories, metadata/hashes, append-only registry
 scripts/prepare_rml2016.py         verify dataset structure, create or verify the frozen split
+scripts/prepare_rml2018.py         verify RML2018.01a and its frozen split (never writes a split)
 scripts/train.py                   train one experiment (train + val only)
 scripts/evaluate_final.py          one-time held-out test evaluation of a finished run
 splits/                            frozen split index files (no samples)
@@ -45,7 +49,11 @@ Datasets are never stored in Git. Point the code at the dataset at runtime:
 
 ```bash
 export RML2016_ROOT=/path/to/dir/containing/pkl      # or pass --data /path/to/file.pkl
+export RML2018_ROOT=/path/to/dir/containing/hdf5     # or pass --data /path/to/file.hdf5
 ```
+
+RML2018.01a needs `h5py` (`pip install -e .[rml2018]`). Verify the dataset against the frozen
+split with `python scripts/prepare_rml2018.py` (`--split-only` checks the split file alone).
 
 ## Training (GPU, e.g. Kaggle)
 

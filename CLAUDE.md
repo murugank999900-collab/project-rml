@@ -1,7 +1,7 @@
 # Project RML rules
 
 - Primary metric is `peak_accuracy_highest_snr` on the held-out test split
-  (RML2016.10a: +18 dB, target >= 0.90; RML2018.01a: +30 dB, target >= 0.94).
+  (RML2016.10a: +18 dB, target >= 0.90; RML2018.01a: +30 dB, target >= 0.96).
   Overall accuracy is secondary and never the selection metric.
 - Select models on the validation split only (`val_peak_accuracy_highest_snr`). Never use test
   results for training, early stopping, hyperparameter, architecture or checkpoint selection.

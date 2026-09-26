@@ -8,6 +8,7 @@ dependencies = ["numpy>=1.24", "pyyaml>=6.0"]
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
 train = ["torch>=2.4"]
+rml2018 = ["h5py>=3.8"]
 
 [build-system]
 requires = ["setuptools>=68"]

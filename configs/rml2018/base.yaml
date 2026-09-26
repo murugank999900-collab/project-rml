@@ -1,0 +1,36 @@
+# RML2018.01a base configuration.
+# The dataset path is runtime-specific and is NOT stored here. Provide it via
+# the environment variable named in `root_env`, or `--data` on the command line.
+
+dataset:
+  name: RML2018.01a
+  filename: GOLD_XYZ_OSC.0001_1024.hdf5
+  root: null
+  root_env: RML2018_ROOT
+  # Project target at +30 dB. The MR-Transformer paper's ~94% high-SNR result is a
+  # reference baseline only, not the target.
+  target_peak_accuracy: 0.96
+  split_seed: 42
+  split:
+    file: splits/rml2018.01a_seed42.json   # frozen; row indices into the HDF5 file
+    sha256:
+      file: dd8676c098f517dd431753dd2d7db8fc6ede12b12122146d04f5cc19222d0a45
+      train: 929b931f5eaf599901b23d08f16b7bf04c3b64a34056d59ca8bc334ec240b327
+      val: 67a99dd827e11f05bf0bb8991c82d9bb4ffb4a1fb7c8b1b4040e2079f1b700d4
+      test: bad2a0b066601d4d7c91920affcba2dd2db2b7fb4c32d080da934a40117285ce
+  expected:
+    num_samples: 2555904
+    num_classes: 24
+    snrs: [-20, -18, -16, -14, -12, -10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30]
+    samples_per_group: 4096
+    sample_shape: [2, 1024]
+    highest_snr: 30
+    counts: {train: 2044224, val: 255840, test: 255840}
+    per_group: {train: 3276, val: 410, test: 410}
+    highest_snr_counts: {val: 9840, test: 9840}
+
+evaluation:
+  # Primary metric: held-out accuracy at the highest SNR present in the data.
+  primary_metric: peak_accuracy_highest_snr
+  # Model selection uses the validation split only.
+  selection_split: val
